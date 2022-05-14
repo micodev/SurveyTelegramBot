@@ -57,36 +57,50 @@ main_inline_keyboard = InlineKeyboardMarkup(
 
 @ app.on_message()
 async def main(client, message):
-    if(not message.text):
-        return
-    user_attempt = redis.get(message.from_user.id)
-    if(user_attempt):
-        redis.incr(message.from_user.id)
-    else:
-        redis.set(message.from_user.id, 1, ex=2)
-    if(user_attempt and int(user_attempt) == 5):
-        return await client.send_message(message.chat.id, "يرجى الإنتظار لا ترسل رسائل بسرعة")
-    """main function"""
-    if(message.text):
-        print(colored(f"{message.from_user.id} : {message.text}", 'blue'))
+    if(message.chat.type.value == "private"):
+        user = fdb[f"user_{message.from_user.id}"]
+        if(not bool(user)):
+            now = datetime.now()
+            timestamp = datetime.timestamp(now)
+            users.add({"type": "user", "restricted": False, "tg_id": message.from_user.id,
+                       "join_date": timestamp})
+            fdb[f"user_{message.from_user.id}"] = f"{timestamp}"
 
-    if(not(is_admin(message.from_user.id))):
-        # start with parameter , start without it
-        if message.text == "/start":
-            await handle_user_start(client, message)
-        elif message.text.startswith("/start"):
-            await handle_user_start_survey(client, message)
-        elif message.text.startswith("/"):
-            await client.send_message(message.chat.id, "شئت بالأمر الغير معروف")
+        user_attempt = redis.get(message.from_user.id)
+        if(user_attempt):
+            redis.incr(message.from_user.id)
         else:
-            await handle_user_steps(client, message)
-    else:
-        if message.text == "/start":
-            await handle_admin_start(client, message)
-        elif message.reply_to_message:
-            await handle_admin_reply(client, message)
-        elif(bool(fdb.steps.action)):
-            await handle_admin_steps(client, message)
+            redis.set(message.from_user.id, 1, ex=2)
+
+        if(user_attempt and int(user_attempt) == 5):
+            return await client.send_message(message.chat.id, "يرجى الإنتظار لا ترسل رسائل بسرعة")
+        user = users.getByQuery({'tg_id': message.from_user.id})
+        if(len(user) > 0):
+            user = user[0]
+            if(user['restricted']):
+                return
+        if(not message.text):
+            return
+        if(message.text):
+            print(colored(f"{message.from_user.id} : {message.text}", 'blue'))
+
+        if(not(is_admin(message.from_user.id))):
+            # start with parameter , start without it
+            if message.text == "/start":
+                await handle_user_start(client, message)
+            elif message.text.startswith("/start"):
+                await handle_user_start_survey(client, message)
+            elif message.text.startswith("/"):
+                await client.send_message(message.chat.id, "شئت بالأمر الغير معروف")
+            else:
+                await handle_user_steps(client, message)
+        else:
+            if message.text == "/start":
+                await handle_admin_start(client, message)
+            elif message.reply_to_message:
+                await handle_admin_reply(client, message)
+            elif(bool(fdb.steps.action)):
+                await handle_admin_steps(client, message)
 
 
 async def handle_admin_reply(client, message):
@@ -199,18 +213,15 @@ async def handle_user_start(client, message):
 
     if(not bool(welcome_message)):
         welcome_message = "مرحبا بك عضونا المميز"
-    current_user = get_users({"tg_id": message.from_user.id})
-    if(current_user):
+    # current_user = get_users({"tg_id": message.from_user.id})
+    # if(current_user):
         # re-start
-        await client.send_message(message.chat.id, parse_message(welcome_message, message))
-    else:
-        now = datetime.now()
-        timestamp = datetime.timestamp(now)
-        users.add({"type": "user", "restricted": False, "tg_id": message.from_user.id,
-                   "join_date": timestamp})
-        # new start
-        await client.send_message(message.chat.id, parse_message(welcome_message, message))
-        # print(user)
+    await client.send_message(message.chat.id, parse_message(welcome_message, message))
+    # else:
+
+    # new start
+    # await client.send_message(message.chat.id, parse_message(welcome_message, message))
+    # print(user)
 
 
 async def handle_user_start_survey(client, message):
@@ -239,7 +250,7 @@ async def handle_callback_query(client, callback_query):
     """handle callback query"""
     user_id = "callback_"+str(callback_query.from_user.id)
     user_attempt = redis.get(user_id)
-    if(user_attempt):
+    if(user_attempt and callback_query.from_user.id not in admin_ids):
         await client.answer_callback_query(callback_query.id, "يرجى الإنتظار")
         return
     else:
@@ -316,7 +327,7 @@ async def handle_callback_query(client, callback_query):
             user = user[0]
             users.updateById(user['id'], {"restricted": True})
             await callback_query.message.delete()
-            await client.send_message(user_id, "تم حظرك من إستخدام البوت")
+            await client.send_message(user_id, "تم حظرك من إستخدام البوت لو كنت تعتقد ان ما حصل خطأ راسل : @anime19")
             await client.answer_callback_query(callback_query.id, "تم حظر المستخدم بنجاح")
     elif callback_query.data.startswith("unrestrict"):
         user_id = callback_query.data.replace("unrestrict=", "")
@@ -352,6 +363,12 @@ async def handle_callback_query(client, callback_query):
         if len(surv) > 0:
 
             surveies.updateById(surv['id'], {"active": 0})
+            await client.edit_message_reply_markup(
+                channel_id, int(surv['post_id']),
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(
+                        "🚫 تم إيقاف المنشور 🚫", callback_data="idle")
+                ]]))
             await callback_query.message.delete()
             await client.send_message(callback_query.message.chat.id, "تم إيقاف المنشور")
             await client.answer_callback_query(callback_query.id, "تم إيقاف السؤال بنجاح")
@@ -398,31 +415,34 @@ def check_expiration():
     # for admin in admin_ids:
     if(bool(fdb.question_time)):
         if(fdb.question_time < datetime.now()):
+            try:
+                msg = app.send_message(channel_id, fdb.question_post)
 
-            msg = app.send_message(channel_id, fdb.question_post)
+                expire_time = datetime.timestamp(
+                    fdb.question_time + timedelta(hours=24))
+                survey = surveies.add(
+                    {
+                        "type": "question_post",
+                        "post_id": str(msg.id),
+                        "question": str(fdb.question_post),
+                        "active": True,
+                        "expire": expire_time,
+                        "answer_count": 0
+                    })
 
-            expire_time = datetime.timestamp(
-                fdb.question_time + timedelta(hours=24))
-            survey = surveies.add(
-                {
-                    "type": "question_post",
-                    "post_id": str(msg.id),
-                    "question": str(fdb.question_post),
-                    "active": True,
-                    "expire": expire_time,
-                    "answer_count": 0
-                })
+                answer_keyboard = InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton(
+                            '📛 أطرح سؤالاً 📛', url=f'https://t.me/tecmtbot?start={str(survey)}'
 
-            answer_keyboard = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton(
-                        '📛 أطرح سؤالاً 📛', url=f'https://t.me/tecmtbot?start={str(survey)}'
+                        )
+                    ]
+                ])
+                app.edit_message_reply_markup(
+                    channel_id, msg.id, reply_markup=answer_keyboard)
 
-                    )
-                ]
-            ])
-            app.edit_message_reply_markup(
-                channel_id, msg.id, reply_markup=answer_keyboard)
+            except Exception as e:
+                print(colored(f"error: {e}", 'red'))
             fdb.question_post = None
             fdb.question_time = None
 
