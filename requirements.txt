@@ -1,5 +1,5 @@
 APScheduler==3.9.1
-dot==0.0.0
+dot
 dotobject==1.2.2
 pysondb==1.6.7
 python_dateutil==2.8.2
