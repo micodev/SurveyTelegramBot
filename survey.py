@@ -25,7 +25,7 @@ users = db.getDb("database/users.json")
 surveies = db.getDb("database/surveys.json")
 questions = db.getDb("database/questions.json")
 admin_ids = [637572531]
-channel_id = "MeowthGo"
+channel_id = "techmt"  # "MeowthGo"
 
 main_message = "مرحبا بك يا مشرفنا العزيز"
 
