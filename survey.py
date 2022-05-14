@@ -10,7 +10,6 @@ from pyrogram.types import (InlineKeyboardMarkup, InlineKeyboardButton)
 from dateutil import parser
 from termcolor import colored
 
-from model.flood_user import UserFlood
 
 # print(coloredmessage.text("I am result : "+str(name), 'red'))
 redis = Redis(host='localhost', port=6379, db=0,
